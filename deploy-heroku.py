@@ -64,6 +64,8 @@ def deploy(app: str, api_key: str, commit_hash: str, dry_run: bool):
 
     latest_heroku_release = get_latest_heroku_release(app, api_key)
 
+    if latest_heroku_release.status != "succeeded":
+        raise Exception("Heroku release command failed! See Heroku release logs for detailed information")
 
     click.echo(f"New release version is {latest_heroku_release.version}")
     print(f"::set-output name=release_version::{latest_heroku_release.version}")
@@ -71,4 +73,3 @@ def deploy(app: str, api_key: str, commit_hash: str, dry_run: bool):
 
 if __name__ == "__main__":
     main()
-
