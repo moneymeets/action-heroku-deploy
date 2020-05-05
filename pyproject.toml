@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "action-heroku-deploy"
+version = "0.1.0"
+description = "Action for Heroku deployment"
+authors = ["moneymeets GmbH <service@moneymeets.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+click = "^7.0"
+dataclasses-json = "*"
+requests ="*"
+
+[tool.poetry.dev-dependencies]
+flake8 = "*"
+flake8-quotes = "*"
+flake8-coding = "*"
+flake8-commas = "*"
+flake8-import-order = "*"
+
+[build-system]
+requires = ["poetry>=1.0.0"]
+build-backend = "poetry.masonry.api"
