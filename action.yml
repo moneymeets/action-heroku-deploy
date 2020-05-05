@@ -17,7 +17,7 @@ outputs:
 
 runs:
   using: docker
-  image: Dockerfile
+  image: docker://moneymeets/action-heroku-deploy:v2
   env:
     APP: ${{ inputs.heroku_app }}
     API_KEY: ${{ inputs.heroku_api_key }}
