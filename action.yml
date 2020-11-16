@@ -18,9 +18,10 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - run: python -m deploy_heroku
+    - run: python3 -m deploy_heroku
       shell: bash
-    env:
-      APP: ${{ inputs.heroku_app }}
-      API_KEY: ${{ inputs.heroku_api_key }}
-      COMMIT_HASH: ${{ inputs.github_sha }}
+      working-directory: ${{ github.action_path }}
+      env:
+        APP: ${{ inputs.heroku_app }}
+        API_KEY: ${{ inputs.heroku_api_key }}
+        COMMIT_HASH: ${{ inputs.github_sha }}
