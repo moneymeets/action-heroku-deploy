@@ -1,7 +1,7 @@
 name: CI
 on: [ push ]
 jobs:
-  build:
+  lint-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container: moneymeets/moneymeets-ci:latest
@@ -12,3 +12,5 @@ jobs:
       - name: Run linter
         run: pip install flake8 && flake8
 
+      - name: Run tests
+        run: python -m test_deploy_heroku
