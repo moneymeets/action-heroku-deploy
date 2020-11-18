@@ -30,9 +30,9 @@ class DeployHerokuTestCase(unittest.TestCase):
         mock_request.assert_called_once_with("https://api.heroku.com/apps/foo/releases")
         mock_request().add_header.assert_has_calls([call("Authorization", "Bearer bar")], any_order=True)
 
-        self.assertEqual(latest_release["id"], release_id)
-        self.assertEqual(latest_release["version"], release_version)
-        self.assertEqual(latest_release["status"], release_status)
+        self.assertEqual(latest_release.id, release_id)
+        self.assertEqual(latest_release.version, release_version)
+        self.assertEqual(latest_release.status, release_status)
 
     @patch("urllib.request.urlopen")
     def test_get_latest_heroku_release_fail(self, mock_urlopen):
