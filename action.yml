@@ -3,22 +3,25 @@ description: 'Deploy a specific commit to specified Heroku app'
 inputs:
   heroku_app:
     required: true
-    description: 'Name of Heroku app to deploy to. (e.g my-example-heroku-app)'
+    description: 'Name of Heroku app to deploy to, e.g. my-example-heroku-app'
   heroku_api_key:
     required: true
     description: 'Heroku API key'
   github_sha:
     required: false
     default: ${{ github.sha }}
-    description: 'Commit Hash (e.g 59d2e89c36774ee3775050a437c290a6c1afb3db)'
+    description: 'Commit hash, e.g. 59d2e89c36774ee3775050a437c290a6c1afb3db'
 outputs:
   release_version:
-    description: 'The release version of Heroku deployment. For example 10'
+    description: 'The release version of Heroku deployment, e.g. 10'
 
 runs:
-  using: docker
-  image: docker://moneymeets/action-heroku-deploy:v2
-  env:
-    APP: ${{ inputs.heroku_app }}
-    API_KEY: ${{ inputs.heroku_api_key }}
-    COMMIT_HASH: ${{ inputs.github_sha }}
+  using: "composite"
+  steps:
+    - run: python3 -m deploy_heroku
+      shell: bash
+      env:
+        APP: ${{ inputs.heroku_app }}
+        API_KEY: ${{ inputs.heroku_api_key }}
+        COMMIT_HASH: ${{ inputs.github_sha }}
+        PYTHONPATH: ${{ github.action_path }}
