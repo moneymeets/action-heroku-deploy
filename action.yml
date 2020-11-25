@@ -14,11 +14,13 @@ inputs:
 outputs:
   release_version:
     description: 'The release version of Heroku deployment, e.g. 10'
+    value: ${{ steps.deploy-and-get-release-version.outputs.release_version }}
 
 runs:
   using: "composite"
   steps:
-    - run: python3 -m deploy_heroku
+    - id: deploy-and-get-release-version
+      run: python3 -m deploy_heroku
       shell: bash
       env:
         APP: ${{ inputs.heroku_app }}
