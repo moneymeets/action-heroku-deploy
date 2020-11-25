@@ -26,4 +26,5 @@ runs:
         APP: ${{ inputs.heroku_app }}
         API_KEY: ${{ inputs.heroku_api_key }}
         COMMIT_HASH: ${{ inputs.github_sha }}
+        EVENT_PAYLOAD: ${{ github.event.deployment.payload }}
         PYTHONPATH: ${{ github.action_path }}
