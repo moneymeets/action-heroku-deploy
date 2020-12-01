@@ -5,7 +5,31 @@ import os
 import subprocess
 import urllib.parse
 import urllib.request
+from http import HTTPStatus
 from typing import Optional
+
+
+class DeploymentType:
+    ROLLBACK = "rollback"
+    REDEPLOY = "redeploy"
+
+
+class Endpoint:
+    RELEASES = "releases"
+    RELEASE = "releases/{}"
+    SLUGS = "slugs/{}"
+
+
+class HerokuStatus:
+    PENDING = "pending"
+    FAILED = "failed"
+    SUCCEEDED = "succeeded"
+
+
+class HTTPMethod:
+    GET = "GET"
+    POST = "POST"
+    PUT = "PUT"
 
 
 @dataclasses.dataclass
@@ -17,16 +41,6 @@ class HerokuRelease:
     slug_id: str
 
 
-class DeploymentType:
-    ROLLBACK = "rollback"
-    REDEPLOY = "redeploy"
-
-
-class Endpoint:
-    RELEASES = "releases"
-    SLUGS = "slugs/{}"
-
-
 def release_from_response(data) -> HerokuRelease:
     return HerokuRelease(
         **{prop.name: data[prop.name] for prop in dataclasses.fields(HerokuRelease) if prop.name != "slug_id"},
@@ -34,7 +48,14 @@ def release_from_response(data) -> HerokuRelease:
     )
 
 
-def get_request(app: str, api_key: str, endpoint: str, payload: Optional[dict] = None) -> urllib.request.Request:
+def get_status_codes(method: str) -> tuple:
+    return {
+        HTTPMethod.GET: (HTTPStatus.OK, HTTPStatus.PARTIAL_CONTENT),
+        HTTPMethod.POST: (HTTPStatus.CREATED,),
+    }[method]
+
+
+def get_response(app: str, api_key: str, endpoint: str, payload: Optional[dict] = None):
     headers = {
         "Accept": "application/vnd.heroku+json; version=3",
         "Authorization": f"Bearer {api_key}",
@@ -43,41 +64,26 @@ def get_request(app: str, api_key: str, endpoint: str, payload: Optional[dict] =
 
     }
 
-    return urllib.request.Request(
+    request = urllib.request.Request(
         f"https://api.heroku.com/apps/{app}/{endpoint}",
         headers=headers,
         data=json.dumps(payload).encode() if payload is not None else None,
     )
 
-
-def get_latest_commit_from_slug(app: str, api_key: str, slug_id: str):
-    request = get_request(app, api_key, Endpoint.SLUGS.format(slug_id))
-
     with urllib.request.urlopen(request) as response:
-        assert response.getcode() == 200, response.getcode()
-        return json.loads(response.read())["commit"]
+        assert response.getcode() in get_status_codes(request.get_method()), response.getcode()
+        return json.loads(response.read())
 
 
 def get_latest_heroku_release(app: str, api_key: str) -> HerokuRelease:
-    request = get_request(app, api_key, Endpoint.RELEASES)
-
-    with urllib.request.urlopen(request) as response:
-        assert response.getcode() in (200, 206), response.getcode()
-        latest_release, *_ = json.loads(response.read())
-        return release_from_response(latest_release)
+    return release_from_response(get_response(app, api_key, Endpoint.RELEASES)[0])
 
 
 def trigger_release_retry(app: str, api_key: str, release: HerokuRelease):
-    request = get_request(
-        app=app,
-        api_key=api_key,
-        endpoint=Endpoint.RELEASES,
-        payload={"slug": release.slug_id, "description": f"Retry of v{release.version}: {release.description}"},
-    )
+    payload = {"slug": release.slug_id, "description": f"Retry of v{release.version}: {release.description}"}
+    return release_from_response(get_response(app, api_key, Endpoint.RELEASES, payload))
 
-    with urllib.request.urlopen(request) as response:
-        assert response.getcode() == 201, response.getcode()
-        return release_from_response(json.loads(response.read()))
+
 
 
 def deploy_heroku_command(commit_hash: str, api_key: str, app: str, rollback: bool) -> str:
@@ -85,33 +91,30 @@ def deploy_heroku_command(commit_hash: str, api_key: str, app: str, rollback: bo
     return f"git push {git_url} {commit_hash}:refs/heads/master {'--force' if rollback else ''}".strip()
 
 
-def deploy_and_get_release(heroku_app: str, heroku_api_key: str, git_commit_hash: str, rollback: bool) -> HerokuRelease:
+def do_deploy(heroku_app: str, heroku_api_key: str, git_commit_hash: str, rollback: bool):
     deploy_command = deploy_heroku_command(git_commit_hash, heroku_api_key, heroku_app, rollback)
     subprocess.run(deploy_command, check=True, shell=True)
-    return get_latest_heroku_release(heroku_app, heroku_api_key)
 
 
-def get_payload_type(payload: str) -> Optional[str]:
-    return json.loads(payload)["ghd"]["type"] if payload else None
-
-
-def main(heroku_app, heroku_api_key, git_commit_hash, payload_str):
+def main(heroku_app: str, heroku_api_key: str, git_commit_hash: str, payload_str: str):
     assert heroku_app and heroku_api_key and git_commit_hash, "app, API key and commit hash required!"
 
     print(f"Heroku app name: {heroku_app}")
 
-    payload_type = get_payload_type(payload_str)
+    payload_type = json.loads(payload_str)["ghd"]["type"] if payload_str else None
 
     latest_release = get_latest_heroku_release(heroku_app, heroku_api_key)
-    commit_hash_from_slug = get_latest_commit_from_slug(heroku_app, heroku_api_key, latest_release.slug_id)
-    if commit_hash_from_slug == git_commit_hash and payload_type == DeploymentType.REDEPLOY:
-        latest_heroku_release = trigger_release_retry(heroku_app, heroku_api_key, latest_release)
-    elif payload_type == DeploymentType.ROLLBACK:
-        latest_heroku_release = deploy_and_get_release(heroku_app, heroku_api_key, git_commit_hash, rollback=True)
-    else:
-        latest_heroku_release = deploy_and_get_release(heroku_app, heroku_api_key, git_commit_hash, rollback=False)
+    latest_slug = get_response(heroku_app, heroku_api_key, Endpoint.SLUGS.format(latest_release.slug_id))
 
-    if latest_heroku_release.status != "succeeded":
+    if latest_slug["commit"] == git_commit_hash and payload_type == DeploymentType.REDEPLOY:
+        release_version = trigger_release_retry(heroku_app, heroku_api_key, latest_release).version
+    elif payload_type == DeploymentType.ROLLBACK:
+        do_deploy(heroku_app, heroku_api_key, git_commit_hash, rollback=True)
+    else:
+        do_deploy(heroku_app, heroku_api_key, git_commit_hash, rollback=False)
+
+    latest_heroku_release = get_latest_heroku_release(heroku_app, heroku_api_key)
+    if latest_heroku_release.status != HerokuStatus.SUCCEEDED:
         raise RuntimeError("Heroku release command failed! See Heroku release logs for detailed information.")
 
     print(f"New release version is {latest_heroku_release.version}")
