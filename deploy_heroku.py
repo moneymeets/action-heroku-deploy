@@ -3,6 +3,7 @@ import dataclasses
 import json
 import os
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from http import HTTPStatus
@@ -84,6 +85,19 @@ def trigger_release_retry(app: str, api_key: str, release: HerokuRelease):
     return release_from_response(get_response(app, api_key, Endpoint.RELEASES, payload))
 
 
+def wait_for_release(app, api_key, release_version: int, timeout: int = 300, wait_time: int = 3):
+    count = 0
+    while count < timeout / wait_time:
+        print("Wait for release phase finished")
+        release = release_from_response(get_response(app, api_key, Endpoint.RELEASE.format(release_version)))
+
+        if release.status != HerokuStatus.PENDING:
+            return
+
+        time.sleep(wait_time)
+        count += 1
+
+    raise TimeoutError
 
 
 def deploy_heroku_command(commit_hash: str, api_key: str, app: str, rollback: bool) -> str:
@@ -108,6 +122,7 @@ def main(heroku_app: str, heroku_api_key: str, git_commit_hash: str, payload_str
 
     if latest_slug["commit"] == git_commit_hash and payload_type == DeploymentType.REDEPLOY:
         release_version = trigger_release_retry(heroku_app, heroku_api_key, latest_release).version
+        wait_for_release(heroku_app, heroku_api_key, release_version)
     elif payload_type == DeploymentType.ROLLBACK:
         do_deploy(heroku_app, heroku_api_key, git_commit_hash, rollback=True)
     else:
