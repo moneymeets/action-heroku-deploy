@@ -2,12 +2,16 @@ name: CI
 on: [ push ]
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container: moneymeets/moneymeets-ci:latest
+    runs-on: ubuntu-20.04
+    timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9.1
 
       - name: Run linter
         run: pip install flake8 && flake8
