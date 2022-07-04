@@ -7,10 +7,12 @@ import time
 import urllib.parse
 import urllib.request
 from http import HTTPStatus
+from pathlib import Path
 from typing import Optional
 
 
 class DeploymentType:
+    FORWARD = "forward"
     ROLLBACK = "rollback"
     REDEPLOY = "redeploy"
 
@@ -110,20 +112,29 @@ def do_deploy(heroku_app: str, heroku_api_key: str, git_commit_hash: str, rollba
     subprocess.run(deploy_command, check=True, shell=True)
 
 
-def main(heroku_app: str, heroku_api_key: str, git_commit_hash: str, payload_str: str):
+def get_deployment_type(event_path: Path) -> str:
+    payload = json.loads(event_path.read_bytes())["deployment"]["payload"]
+    # ToDo: remove support of ghd type after archiving ghd completely
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+
+    return payload["ghd"]["type"] if "ghd" in payload else payload["deployment_type"]
+
+
+def main(heroku_app: str, heroku_api_key: str, git_commit_hash: str, json_event_path: Path):
     assert heroku_app and heroku_api_key and git_commit_hash, "app, API key and commit hash required!"
 
     print(f"Heroku app name: {heroku_app}")
 
-    payload_type = json.loads(payload_str)["ghd"]["type"] if payload_str else None
+    deployment_type = get_deployment_type(json_event_path)
 
     latest_release = get_latest_heroku_release(heroku_app, heroku_api_key)
     latest_slug = get_response(heroku_app, heroku_api_key, Endpoint.SLUGS.format(latest_release.slug_id))
 
-    if latest_slug["commit"] == git_commit_hash and payload_type == DeploymentType.REDEPLOY:
+    if latest_slug["commit"] == git_commit_hash and deployment_type == DeploymentType.REDEPLOY:
         release_version = trigger_release_retry(heroku_app, heroku_api_key, latest_release).version
         wait_for_release(heroku_app, heroku_api_key, release_version)
-    elif payload_type == DeploymentType.ROLLBACK:
+    elif deployment_type == DeploymentType.ROLLBACK:
         do_deploy(heroku_app, heroku_api_key, git_commit_hash, rollback=True)
     else:
         do_deploy(heroku_app, heroku_api_key, git_commit_hash, rollback=False)
@@ -141,7 +152,7 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--app", default=os.environ.get("APP"), type=str)
     parser.add_argument("-K", "--api-key", default=os.environ.get("API_KEY"), type=str)
     parser.add_argument("-c", "--commit-hash", default=os.environ.get("COMMIT_HASH"), type=str)
-    parser.add_argument("-p", "--payload", default=os.environ.get("EVENT_PAYLOAD"), type=str)
+    parser.add_argument("-j", "--json-event-path", default=os.environ.get("JSON_EVENT_PATH"), type=str)
     args = parser.parse_args()
 
-    main(args.app, args.api_key, args.commit_hash, args.payload)
+    main(args.app, args.api_key, args.commit_hash, Path(args.json_event_path))
