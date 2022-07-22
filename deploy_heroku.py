@@ -64,7 +64,6 @@ def get_response(app: str, api_key: str, endpoint: str, payload: Optional[dict] 
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "Range": "version ..; order=desc,max=10;",
-
     }
 
     request = urllib.request.Request(

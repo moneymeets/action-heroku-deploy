@@ -171,7 +171,7 @@ class DeployHerokuTestCase(unittest.TestCase):
             mock_get_release.assert_called_with("fake-app", "fake-token")
             mock_response.assert_called_with("fake-app", "fake-token", "slugs/227c9e81-a699-9a1bea3b8119")
 
-            if deployment_type == "redeploy":
+            if deployment_type == DeploymentType.REDEPLOY:
                 mock_trigger_release.assert_called_with("fake-app", "fake-token", MOCK_RELEASE)
                 mock_wait.assert_called_with("fake-app", "fake-token", MOCK_RELEASE.version)
             else:
@@ -180,10 +180,10 @@ class DeployHerokuTestCase(unittest.TestCase):
         run()
 
     def test_main_deploy(self):
-        self.perform_test(rollback=False, deployment_type="forward")
+        self.perform_test(rollback=False, deployment_type=DeploymentType.FORWARD)
 
     def test_main_redeploy(self):
-        self.perform_test(rollback=False, deployment_type="redeploy")
+        self.perform_test(rollback=False, deployment_type=DeploymentType.REDEPLOY)
 
     def test_main_rollback(self):
         self.perform_test(rollback=True, deployment_type=DeploymentType.ROLLBACK)
