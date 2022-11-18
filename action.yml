@@ -11,16 +11,11 @@ inputs:
     required: false
     default: ${{ github.sha }}
     description: 'Commit hash, e.g. 59d2e89c36774ee3775050a437c290a6c1afb3db'
-outputs:
-  release_version:
-    description: 'The release version of Heroku deployment, e.g. 10'
-    value: ${{ steps.deploy-and-get-release-version.outputs.release_version }}
 
 runs:
   using: "composite"
   steps:
-    - id: deploy-and-get-release-version
-      run: python3 -m deploy_heroku
+    - run: python3 -m deploy_heroku
       shell: bash
       env:
         APP: ${{ inputs.heroku_app }}

@@ -143,7 +143,6 @@ def main(heroku_app: str, heroku_api_key: str, git_commit_hash: str, json_event_
         raise RuntimeError("Heroku release command failed! See Heroku release logs for detailed information.")
 
     print(f"New release version is {latest_heroku_release.version}")
-    print(f"::set-output name=release_version::{latest_heroku_release.version}")
 
 
 if __name__ == "__main__":
