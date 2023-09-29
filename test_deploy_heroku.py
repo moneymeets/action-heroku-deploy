@@ -1,13 +1,11 @@
 import json
-import tempfile
 import unittest
 from http import HTTPStatus
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from deploy_heroku import Endpoint, HTTPMethod, HerokuStatus, deploy_heroku_command, get_deployment_type, \
-    get_latest_heroku_release, get_response, get_status_codes, main, release_from_response, trigger_release_retry, \
-    wait_for_release, DeploymentType
+from deploy_heroku import Endpoint, HTTPMethod, HerokuStatus, deploy_heroku_command, get_latest_heroku_release, \
+    get_response, get_status_codes, main, release_from_response, trigger_release_retry, \
+    wait_for_release
 
 MOCK_COMMIT_HASH = "abc1234"
 
@@ -137,61 +135,39 @@ class DeployHerokuTestCase(unittest.TestCase):
         mock_get_response.assert_called_once_with("fake-app", "fake-token", "releases/1")
 
     def test_deploy_heroku_command(self):
-        expected_result = "git push https://heroku:bar@git.heroku.com/foobar.git sha:refs/heads/master"
-        result = deploy_heroku_command("sha", "bar", "foobar", rollback=False)
-        self.assertEqual(result, expected_result)
-
         expected_result = "git push https://heroku:bar@git.heroku.com/foobar.git sha:refs/heads/master --force"
-        result = deploy_heroku_command("sha", "bar", "foobar", rollback=True)
+        result = deploy_heroku_command("sha", "bar", "foobar")
         self.assertEqual(result, expected_result)
 
-    def test_get_deployment_type(self):
-        def test(payload: dict | str):
-            with tempfile.NamedTemporaryFile(mode="w") as tmpfile:
-                tmpfile.write(json.dumps(payload, indent=2))
-                tmpfile.flush()
-                self.assertEqual(get_deployment_type(Path(tmpfile.name)), DeploymentType.ROLLBACK)
-                return get_deployment_type(Path(tmpfile.name))
-
-        test({"deployment": {"payload": {"deployment_type": DeploymentType.ROLLBACK}}})
-        test({"deployment": {"payload": json.dumps({"deployment_type": DeploymentType.ROLLBACK})}}),
-        test({"deployment": {"payload": json.dumps({"ghd": {"type": DeploymentType.ROLLBACK}})}}),
-        self.assertRaises(KeyError, test, {"bad_key": DeploymentType.ROLLBACK})
-
-    def perform_test(self, rollback: bool, deployment_type: str):
-        @patch("deploy_heroku.get_deployment_type", return_value=deployment_type)
+    def perform_test(self, commit: str):
         @patch("deploy_heroku.get_latest_heroku_release", return_value=MOCK_RELEASE)
         @patch("deploy_heroku.get_response", return_value={"commit": MOCK_COMMIT_HASH})
         @patch("deploy_heroku.do_deploy")
         @patch("deploy_heroku.trigger_release_retry", return_value=MOCK_RELEASE)
         @patch("deploy_heroku.wait_for_release", return_value=None)
-        def run(mock_wait, mock_trigger_release, mock_deploy, mock_response, mock_get_release, mock_deployment_type):
-            main(MOCK_HEROKU_APP, MOCK_HEROKU_API_TOKEN, MOCK_COMMIT_HASH, Path(""))
-            mock_deployment_type.assert_called_with(Path(""))
+        def run(mock_wait, mock_trigger_release, mock_deploy, mock_response, mock_get_release):
+            main(MOCK_HEROKU_APP, MOCK_HEROKU_API_TOKEN, commit)
             mock_get_release.assert_called_with("fake-app", "fake-token")
             mock_response.assert_called_with("fake-app", "fake-token", "slugs/227c9e81-a699-9a1bea3b8119")
 
-            if deployment_type == DeploymentType.REDEPLOY:
+            if MOCK_COMMIT_HASH == commit:
                 mock_trigger_release.assert_called_with("fake-app", "fake-token", MOCK_RELEASE)
                 mock_wait.assert_called_with("fake-app", "fake-token", MOCK_RELEASE.version)
             else:
-                mock_deploy.assert_called_once_with("fake-app", "fake-token", "abc1234", rollback=rollback)
+                mock_deploy.assert_called_once_with("fake-app", "fake-token", commit)
 
         run()
 
     def test_main_deploy(self):
-        self.perform_test(rollback=False, deployment_type=DeploymentType.FORWARD)
+        self.perform_test("new-commit")
 
     def test_main_redeploy(self):
-        self.perform_test(rollback=False, deployment_type=DeploymentType.REDEPLOY)
-
-    def test_main_rollback(self):
-        self.perform_test(rollback=True, deployment_type=DeploymentType.ROLLBACK)
+        self.perform_test(MOCK_COMMIT_HASH)
 
     def test_main_assert(self):
-        self.assertRaises(AssertionError, main, "fake-app", "fake-token", "", "")
-        self.assertRaises(AssertionError, main, "fake-app", "", "abc1234", "")
-        self.assertRaises(AssertionError, main, "", "fake-token", "abc1234", "")
+        self.assertRaises(AssertionError, main, "fake-app", "fake-token", "")
+        self.assertRaises(AssertionError, main, "fake-app", "", "abc1234")
+        self.assertRaises(AssertionError, main, "", "fake-token", "abc1234")
 
 
 if __name__ == "__main__":
