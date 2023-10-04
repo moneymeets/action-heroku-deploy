@@ -7,14 +7,7 @@ import time
 import urllib.parse
 import urllib.request
 from http import HTTPStatus
-from pathlib import Path
 from typing import Optional
-
-
-class DeploymentType:
-    FORWARD = "forward"
-    ROLLBACK = "rollback"
-    REDEPLOY = "redeploy"
 
 
 class Endpoint:
@@ -101,42 +94,29 @@ def wait_for_release(app, api_key, release_version: int, timeout: int = 300, wai
     raise TimeoutError
 
 
-def deploy_heroku_command(commit_hash: str, api_key: str, app: str, rollback: bool) -> str:
+def deploy_heroku_command(commit_hash: str, api_key: str, app: str) -> str:
     git_url = f"https://heroku:{api_key}@git.heroku.com/{app}.git"
-    return f"git push {git_url} {commit_hash}:refs/heads/master {'--force' if rollback else ''}".strip()
+    return f"git push {git_url} {commit_hash}:refs/heads/master --force".strip()
 
 
-def do_deploy(heroku_app: str, heroku_api_key: str, git_commit_hash: str, rollback: bool):
-    deploy_command = deploy_heroku_command(git_commit_hash, heroku_api_key, heroku_app, rollback)
+def do_deploy(heroku_app: str, heroku_api_key: str, git_commit_hash: str):
+    deploy_command = deploy_heroku_command(git_commit_hash, heroku_api_key, heroku_app)
     subprocess.run(deploy_command, check=True, shell=True)
 
 
-def get_deployment_type(event_path: Path) -> str:
-    payload = json.loads(event_path.read_bytes())["deployment"]["payload"]
-    # ToDo: remove support of ghd type after archiving ghd completely
-    if isinstance(payload, str):
-        payload = json.loads(payload)
-
-    return payload["ghd"]["type"] if "ghd" in payload else payload["deployment_type"]
-
-
-def main(heroku_app: str, heroku_api_key: str, git_commit_hash: str, json_event_path: Path):
+def main(heroku_app: str, heroku_api_key: str, git_commit_hash: str):
     assert heroku_app and heroku_api_key and git_commit_hash, "app, API key and commit hash required!"
 
     print(f"Heroku app name: {heroku_app}")
 
-    deployment_type = get_deployment_type(json_event_path)
-
     latest_release = get_latest_heroku_release(heroku_app, heroku_api_key)
     latest_slug = get_response(heroku_app, heroku_api_key, Endpoint.SLUGS.format(latest_release.slug_id))
 
-    if latest_slug["commit"] == git_commit_hash and deployment_type == DeploymentType.REDEPLOY:
+    if latest_slug["commit"] == git_commit_hash:
         release_version = trigger_release_retry(heroku_app, heroku_api_key, latest_release).version
         wait_for_release(heroku_app, heroku_api_key, release_version)
-    elif deployment_type == DeploymentType.ROLLBACK:
-        do_deploy(heroku_app, heroku_api_key, git_commit_hash, rollback=True)
     else:
-        do_deploy(heroku_app, heroku_api_key, git_commit_hash, rollback=False)
+        do_deploy(heroku_app, heroku_api_key, git_commit_hash)
 
     latest_heroku_release = get_latest_heroku_release(heroku_app, heroku_api_key)
     if latest_heroku_release.status != HerokuStatus.SUCCEEDED:
@@ -150,7 +130,6 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--app", default=os.environ.get("APP"), type=str)
     parser.add_argument("-K", "--api-key", default=os.environ.get("API_KEY"), type=str)
     parser.add_argument("-c", "--commit-hash", default=os.environ.get("COMMIT_HASH"), type=str)
-    parser.add_argument("-j", "--json-event-path", default=os.environ.get("JSON_EVENT_PATH"), type=str)
     args = parser.parse_args()
 
-    main(args.app, args.api_key, args.commit_hash, Path(args.json_event_path))
+    main(args.app, args.api_key, args.commit_hash)
